@@ -1,0 +1,2 @@
+# DARK-VITAL-DIMENSIONAL-HYPOTHESIS-D-VITAL-X
+My cosmic theory draft
