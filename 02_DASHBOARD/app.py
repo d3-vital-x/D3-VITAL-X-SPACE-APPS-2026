@@ -1,119 +1,564 @@
-import streamlit as st
-import numpy as np
-import pandas as pd
-import time
+# ============================================================
+# D³ VITAL-X SPACE INTELLIGENCE PLATFORM
+# Module 57 — app.py
+# Functional Streamlit Dashboard Entry Point
+#
+# Public framework only.
+# Proprietary intelligence core is NOT included.
+# ============================================================
 
-# --- PAGE CONFIGURATION ---
+from pathlib import Path
+import sys
+import io
+import hashlib
+import json
+from datetime import datetime, timezone
+import streamlit as st
+
+# ============================================================
+# PROJECT PATH
+# ============================================================
+PROJECT_ROOT = Path("/content/D3-VITAL-X-Space-Intelligence-Platform")
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
 st.set_page_config(
     page_title="D³ VITAL-X Space Intelligence Platform",
-    page_icon="🚀",
+    page_icon="🛰️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# --- HEADER SECTION ---
-st.title("🚀 D³ VITAL-X Space Intelligence Platform")
-st.caption("One AI Engine. Multiple Worlds. One Signal Language. | Research Prototype")
+# ============================================================
+# CONSTANTS
+# ============================================================
+APP_VERSION = "0.1.0-development"
+SUPPORTED_PUBLIC_INPUTS = [
+    "CSV",
+    "Image",
+    "Time-Series",
+]
+PROJECT_STATUS = "ACTIVE DEVELOPMENT"
 
-st.markdown("""
-> **Disclaimer:** This system is an independent research prototype for signal & physiological indicator monitoring in extreme space environments. It is not intended for clinical diagnostics or direct medical intervention.
-""")
+# ============================================================
+# UTILITY FUNCTIONS
+# ============================================================
+def utc_timestamp():
+    """Return current UTC timestamp."""
+    return datetime.now(timezone.utc).isoformat()
 
-st.divider()
+def calculate_sha256(data: bytes) -> str:
+    """Calculate SHA-256 hash of raw uploaded bytes."""
+    return hashlib.sha256(data).hexdigest()
 
-# --- SIDEBAR CONTROLS ---
-st.sidebar.header("⚙️ Configuration & Inputs")
+def format_bytes(size):
+    """Human-readable file size."""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 ** 2:
+        return f"{size / 1024:.2f} KB"
+    if size < 1024 ** 3:
+        return f"{size / 1024 ** 2:.2f} MB"
+    return f"{size / 1024 ** 3:.2f} GB"
 
-mode = st.sidebar.selectbox(
-    "Select Operating Mode",
-    ["Astronaut Physiological Monitoring (ECG/SpO2/Bio-Entropy)", "Space Anomaly Detection (FITS/CSV Data)", "Live Stream Simulation"]
+def detect_input_type(filename):
+    """Detect supported public input type from filename."""
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".csv":
+        return "CSV"
+    if suffix in [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"]:
+        return "IMAGE"
+    if suffix in [".txt", ".dat"]:
+        return "TIME-SERIES"
+    return "UNKNOWN"
+
+# ============================================================
+# HEADER
+# ============================================================
+st.title("🛰️ D³ VITAL-X Space Intelligence Platform")
+st.markdown(
+    """
+    ### One AI Engine. Multiple Worlds. One Signal Language.
+    **Independent research prototype — D³ VITAL-X BANGLADESH**
+
+    This dashboard provides a public interface for scientific data ingestion, technical quality assessment, exploratory analysis, and visualization.
+
+    > **Development Status: ACTIVE DEVELOPMENT**
+    """
 )
 
-data_source = st.sidebar.radio("Data Source", ["Generate Synthetic Telemetry", "Upload CSV/Image Data"])
+# ============================================================
+# PROJECT STATUS BANNER
+# ============================================================
+st.info(
+    "🔬 This is a work-in-progress research prototype. "
+    "Some analytics, NASA integration, biomedical workflows, "
+    "live mode, and advanced visualization modules are under development."
+)
 
-entropy_threshold = st.sidebar.slider("Bio-Entropy Alert Threshold", 0.0, 1.0, 0.75, 0.05)
-edge_optimization = st.sidebar.checkbox("Enable Mobile-Edge Optimization (Redmi-9 3/4GB Mode)", value=True)
+# ============================================================
+# SIDEBAR
+# ============================================================
+with st.sidebar:
+    st.header("🛰️ D³ VITAL-X")
+    st.caption(f"Version: {APP_VERSION}")
+    st.divider()
+    st.subheader("Navigation")
+    page = st.radio(
+        "Select Mode",
+        [
+            "🏠 Home",
+            "📥 Data Upload",
+            "🔬 Data Quality",
+            "📊 Visualization",
+            "🛰️ Space Mode",
+            "🩻 Biomedical Mode",
+            "🎥 Live Mode",
+            "ℹ️ About",
+        ],
+    )
+    st.divider()
+    st.subheader("System Status")
+    st.success("Public Framework: Available")
+    st.success("Input Layer: Available")
+    st.success("Unified Data Layer: Available")
+    st.warning("Advanced Analytics: Under Development")
+    st.warning("NASA Integration: Under Development")
+    st.warning("Live Mode: Under Development")
+    st.divider()
+    st.caption("D³ VITAL-X BANGLADESH")
 
-st.sidebar.markdown("---")
-st.sidebar.info("**Team:** D³ VITAL-X Bangladesh\n\n**Event:** NASA Space Apps Challenge 2026 (Khulna)")
+# ============================================================
+# SESSION STATE
+# ============================================================
+if "uploaded_data" not in st.session_state:
+    st.session_state.uploaded_data = None
+if "uploaded_name" not in st.session_state:
+    st.session_state.uploaded_name = None
+if "uploaded_type" not in st.session_state:
+    st.session_state.uploaded_type = None
+if "uploaded_hash" not in st.session_state:
+    st.session_state.uploaded_hash = None
+if "uploaded_size" not in st.session_state:
+    st.session_state.uploaded_size = None
 
-# --- MAIN DASHBOARD CONTENT ---
+# ============================================================
+# HOME
+# ============================================================
+if page == "🏠 Home":
+    st.header("Welcome to D³ VITAL-X")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Input Modes", "3")
+    with col2:
+        st.metric("Data Layer", "Active")
+    with col3:
+        st.metric("QC Framework", "Active")
+    with col4:
+        st.metric("Development", "Ongoing")
 
-# Top Metric Cards
-col1, col2, col3, col4 = st.columns(4)
+    st.divider()
+    st.subheader("Current Public Architecture")
+    architecture = [
+        "Input Adapters",
+        "Unified Data Layer",
+        "Data Validation",
+        "Quality Control",
+        "Feature Engine Interface",
+        "Analytics",
+        "Visualization",
+        "Dashboard",
+    ]
+    for i, item in enumerate(architecture, start=1):
+        st.write(f"**{i}.** {item}")
 
-with col1:
-    st.metric(label="Engine Status", value="ONLINE", delta="Edge Compatible")
-with col2:
-    st.metric(label="Current Bio-Entropy", value="0.42", delta="-0.05", delta_color="inverse")
-with col3:
-    st.metric(label="Signal Stability Index (CSI)", value="94.8%", delta="+1.2%")
-with col4:
-    st.metric(label="Anomaly Score", value="LOW (0.18)", delta="Normal Regime")
+    st.divider()
+    st.subheader("Supported Public Inputs")
+    input_col1, input_col2, input_col3 = st.columns(3)
+    with input_col1:
+        st.info("📄 CSV\n\nStructured scientific data")
+    with input_col2:
+        st.info("🖼️ Image\n\nScientific image data")
+    with input_col3:
+        st.info("📈 Time-Series\n\nSignal-based data")
 
-st.divider()
+    st.divider()
+    st.subheader("Responsible Research")
+    st.markdown(
+        """
+        - Raw input preservation
+        - Data provenance
+        - Technical validation
+        - Quality-control checks
+        - Human review
+        - Research-oriented anomaly prioritization
+        """
+    )
+    st.warning(
+        "This platform is not a clinical diagnostic system, "
+        "medical decision tool, or flight-certified spacecraft system."
+    )
 
-# Dynamic Section Based on Mode
-if mode == "Astronaut Physiological Monitoring (ECG/SpO2/Bio-Entropy)":
-    st.subheader("🩺 Astronaut Health & Bio-Signal Analytics")
-    
-    tab1, tab2 = st.tabs(["📊 Live Telemetry Signals", "🧬 Entropy & Gradient Analysis"])
-    
-    with tab1:
-        st.write("**Real-time Synthetic Bio-Telemetry Flow**")
-        
-        # Generate dummy time series
-        np.random.seed(42)
-        chart_data = pd.DataFrame(
-            np.random.randn(50, 3) + [75, 98, 36.6],
-            columns=['Heart Rate (BPM)', 'SpO2 (%)', 'Core Temp (°C)']
-        )
-        
-        st.line_chart(chart_data)
-        
-    with tab2:
-        st.write("**Unified Feature Engine Pipeline Analysis**")
-        st.json({
-            "Pipeline_Layer": "04_UNIFIED_DATA_LAYER",
-            "Variance_Map": "Nominal",
-            "Entropy_Coupling": "Anti-Coupled (Stable)",
-            "Edge_Memory_Usage": "42 MB / 3000 MB" if edge_optimization else "128 MB"
-        })
+# ============================================================
+# DATA UPLOAD
+# ============================================================
+elif page == "📥 Data Upload":
+    st.header("📥 Data Upload")
+    st.write(
+        "Upload a supported public input file for technical inspection "
+        "and exploratory processing."
+    )
 
-elif mode == "Space Anomaly Detection (FITS/CSV Data)":
-    st.subheader("📡 Space Anomaly & Cross-Domain Signal Engine")
-    
-    st.write("Upload or stream heterogeneous space telemetry datasets for structural anomaly scoring.")
-    
-    uploaded_file = st.file_uploader("Choose a CSV dataset", type=["csv"])
+    uploaded_file = st.file_uploader(
+        "Choose a file",
+        type=[
+            "csv",
+            "png",
+            "jpg",
+            "jpeg",
+            "bmp",
+            "tif",
+            "tiff",
+            "webp",
+            "txt",
+            "dat",
+        ],
+    )
+
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.write("### Raw Data Preview", df.head())
+        raw_bytes = uploaded_file.getvalue()
+        filename = uploaded_file.name
+        input_type = detect_input_type(filename)
+        raw_hash = calculate_sha256(raw_bytes)
+
+        st.session_state.uploaded_data = raw_bytes
+        st.session_state.uploaded_name = filename
+        st.session_state.uploaded_type = input_type
+        st.session_state.uploaded_hash = raw_hash
+        st.session_state.uploaded_size = len(raw_bytes)
+
+        st.success(f"Loaded: {filename}")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Input Type", input_type)
+        with col2:
+            st.metric("File Size", format_bytes(len(raw_bytes)))
+        with col3:
+            st.metric("Integrity Hash", raw_hash[:12] + "...")
+
+        st.divider()
+        st.subheader("Raw Input Information")
+        metadata = {
+            "filename": filename,
+            "input_type": input_type,
+            "file_size_bytes": len(raw_bytes),
+            "sha256": raw_hash,
+            "received_at_utc": utc_timestamp(),
+            "raw_data_immutable": True,
+        }
+        st.json(metadata)
+
+        # ----------------------------------------------------
+        # CSV PREVIEW
+        # ----------------------------------------------------
+        if input_type == "CSV":
+            try:
+                import pandas as pd
+                dataframe = pd.read_csv(io.BytesIO(raw_bytes))
+                st.subheader("CSV Preview")
+                st.dataframe(
+                    dataframe.head(100),
+                    use_container_width=True,
+                )
+                st.caption(
+                    f"Rows: {len(dataframe):,} | "
+                    f"Columns: {len(dataframe.columns):,}"
+                )
+            except Exception as exc:
+                st.error(
+                    f"CSV preview could not be generated: {exc}"
+                )
+
+        # ----------------------------------------------------
+        # IMAGE PREVIEW
+        # ----------------------------------------------------
+        elif input_type == "IMAGE":
+            try:
+                from PIL import Image
+                image = Image.open(io.BytesIO(raw_bytes))
+                st.subheader("Image Preview")
+                st.image(
+                    image,
+                    caption=filename,
+                    use_container_width=True,
+                )
+                st.write(
+                    {
+                        "format": image.format,
+                        "mode": image.mode,
+                        "width": image.width,
+                        "height": image.height,
+                    }
+                )
+            except Exception as exc:
+                st.error(
+                    f"Image preview could not be generated: {exc}"
+                )
+
+        # ----------------------------------------------------
+        # TIME-SERIES PREVIEW
+        # ----------------------------------------------------
+        elif input_type == "TIME-SERIES":
+            st.subheader("Time-Series Input")
+            try:
+                text_preview = raw_bytes.decode(
+                    "utf-8", errors="replace"
+                )
+                st.code(
+                    text_preview[:5000],
+                    language="text",
+                )
+            except Exception as exc:
+                st.error(
+                    f"Time-series preview failed: {exc}"
+                )
     else:
-        st.warning("No file uploaded. Displaying default simulation data.")
-        sim_data = pd.DataFrame({
-            "Signal_ID": [f"SIG-{i:03d}" for i in range(1, 6)],
-            "Bio_Entropy": [0.31, 0.45, 0.82, 0.19, 0.55],
-            "Anomaly_Score": [0.12, 0.28, 0.89, 0.05, 0.41],
-            "Status": ["STABLE", "STABLE", "CRITICAL ALERT", "STABLE", "EVALUATING"]
-        })
-        st.table(sim_data)
+        st.info(
+            "Upload a CSV, image, or supported time-series file "
+            "to begin."
+        )
 
-else:
-    st.subheader("📺 Live Stream & Edge Processing Mode")
-    st.write("Simulating streaming frame-by-frame processing on constrained hardware...")
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i in range(100):
-        progress_bar.progress(i + 1)
-        status_text.text(f"Processing Frame {i+1}/100 | Latency: 12ms | Memory: 38MB")
-        time.sleep(0.01)
-        
-    st.success("Frame streaming test successfully completed!")
+# ============================================================
+# DATA QUALITY
+# ============================================================
+elif page == "🔬 Data Quality":
+    st.header("🔬 Data Quality & Integrity")
 
+    if st.session_state.uploaded_data is None:
+        st.info(
+            "Please upload a dataset from the Data Upload page first."
+        )
+    else:
+        raw_bytes = st.session_state.uploaded_data
+        st.success("Raw input received.")
+
+        checks = {
+            "File received": True,
+            "Raw data preserved": True,
+            "SHA-256 generated": True,
+            "Input type detected": (
+                st.session_state.uploaded_type != "UNKNOWN"
+            ),
+            "Human review available": True,
+        }
+
+        for check_name, result in checks.items():
+            if result:
+                st.success(f"✓ {check_name}")
+            else:
+                st.error(f"✗ {check_name}")
+
+        st.divider()
+        st.subheader("Provenance")
+        st.json(
+            {
+                "source_name": st.session_state.uploaded_name,
+                "input_type": st.session_state.uploaded_type,
+                "size_bytes": st.session_state.uploaded_size,
+                "sha256": st.session_state.uploaded_hash,
+                "received_at_utc": utc_timestamp(),
+                "raw_data_immutable": True,
+            }
+        )
+
+        st.divider()
+        st.caption(
+            "Quality-control results shown here are technical "
+            "checks and should not be interpreted as scientific "
+            "or medical conclusions."
+        )
+
+# ============================================================
+# VISUALIZATION
+# ============================================================
+elif page == "📊 Visualization":
+    st.header("📊 Visualization")
+
+    if st.session_state.uploaded_data is None:
+        st.info(
+            "Upload a dataset first to generate exploratory visualization."
+        )
+    else:
+        input_type = st.session_state.uploaded_type
+        raw_bytes = st.session_state.uploaded_data
+
+        if input_type == "CSV":
+            try:
+                import pandas as pd
+                import matplotlib.pyplot as plt
+
+                dataframe = pd.read_csv(io.BytesIO(raw_bytes))
+                numeric_columns = dataframe.select_dtypes(
+                    include="number"
+                ).columns.tolist()
+
+                if numeric_columns:
+                    selected_column = st.selectbox(
+                        "Select numeric signal",
+                        numeric_columns,
+                    )
+                    fig = plt.figure()
+                    plt.plot(dataframe[selected_column].values)
+                    plt.title(f"Exploratory Signal: {selected_column}")
+                    plt.xlabel("Sample")
+                    plt.ylabel(selected_column)
+                    st.pyplot(fig)
+                    st.caption("Exploratory visualization only.")
+                else:
+                    st.warning("No numeric columns were detected.")
+            except Exception as exc:
+                st.error(f"Visualization failed: {exc}")
+
+        elif input_type == "IMAGE":
+            try:
+                from PIL import Image
+                image = Image.open(io.BytesIO(raw_bytes))
+                st.image(
+                    image,
+                    caption="Input Image",
+                    use_container_width=True,
+                )
+            except Exception as exc:
+                st.error(f"Image visualization failed: {exc}")
+        else:
+            st.info(
+                "Advanced time-series visualization is under development."
+            )
+
+        st.divider()
+        st.warning(
+            "Advanced entropy, variance, gradient, CSI and anomaly "
+            "visualization modules will be connected as development continues."
+        )
+
+# ============================================================
+# SPACE MODE
+# ============================================================
+elif page == "🛰️ Space Mode":
+    st.header("🛰️ NASA / Space Mode")
+    st.info("Space Mode is an active development area.")
+
+    st.subheader("Planned Public Workflow")
+    st.write(
+        """
+        NASA dataset → Input Adapter → Unified Data Layer → Technical QC → Feature Interface → Analytics → Visualization
+        """
+    )
+
+    st.divider()
+    st.subheader("NASA Data Integration")
+    st.warning(
+        "NASA dataset loaders and space-specific processing modules "
+        "are currently under development."
+    )
+    st.markdown(
+        """
+        Planned sources include compatible NASA open datasets and NASA API-accessible data products.
+        """
+    )
+
+# ============================================================
+# BIOMEDICAL MODE
+# ============================================================
+elif page == "🩻 Biomedical Mode":
+    st.header("🩻 Biomedical Research Mode")
+    st.info(
+        "Biomedical functionality is intended for research validation "
+        "and technical data exploration."
+    )
+
+    st.subheader("Current Scope")
+    st.markdown(
+        """
+        - Image and structured-data exploration
+        - Technical quality assessment
+        - Research visualization
+        - Human review
+        """
+    )
+
+    st.warning(
+        "This platform does not provide clinical diagnosis, "
+        "medical advice, or automated disease detection."
+    )
+    st.caption(
+        "DICOM adapter and biomedical validation modules are under development."
+    )
+
+# ============================================================
+# LIVE MODE
+# ============================================================
+elif page == "🎥 Live Mode":
+    st.header("🎥 Live / Demonstration Mode")
+    st.info("Live imaging is planned as an optional demonstration mode.")
+
+    st.subheader("Development Status")
+    st.warning(
+        "Video adapter, stream controller, frame processor, "
+        "live metrics, and live heatmap modules are under development."
+    )
+    st.caption(
+        "Live mode is a research demonstration and is not a clinical "
+        "or operational diagnostic system."
+    )
+
+# ============================================================
+# ABOUT
+# ============================================================
+elif page == "ℹ️ About":
+    st.header("ℹ️ About D³ VITAL-X")
+    st.markdown(
+        """
+        ### D³ VITAL-X Space Intelligence Platform
+        **D³ VITAL-X BANGLADESH**
+
+        An independent research-oriented prototype designed to support scientific data exploration through a unified, lightweight framework.
+
+        ### Current Focus
+        - Scientific data ingestion
+        - Unified data representation
+        - Technical validation
+        - Quality control
+        - Exploratory visualization
+        - Human-centered anomaly prioritization
+
+        ### Development Status
+        **ACTIVE DEVELOPMENT**
+
+        The public repository contains framework components and interfaces. Proprietary intelligence-core implementation is not publicly exposed.
+        """
+    )
+
+    st.divider()
+    st.subheader("Responsible Use")
+    st.warning(
+        "Research prototype only. Not a clinical diagnostic system, "
+        "medical decision tool, or flight-certified spacecraft system."
+    )
+
+    st.divider()
+    st.caption("D³ VITAL-X BANGLADESH • NASA Space Apps Challenge 2026")
+
+# ============================================================
+# FOOTER
+# ============================================================
 st.divider()
-
-# Footer
-st.caption("D³ VITAL-X Space Intelligence Platform | Built with Python, Streamlit & Edge-AI Architecture")
+st.caption(
+    "D³ VITAL-X Space Intelligence Platform | "
+    "Independent Research Prototype | "
+    f"{PROJECT_STATUS}"
+)
