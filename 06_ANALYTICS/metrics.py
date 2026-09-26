@@ -1,6 +1,7 @@
 # ============================================================
 # D³ VITAL-X Space Intelligence Platform
 # Module 18 — metrics.py
+# Harmonized Version 1.1.1
 # ============================================================
 #
 # PUBLIC ANALYTICS OUTPUT LAYER
@@ -12,36 +13,21 @@
 # This module is intentionally a PUBLIC result-processing layer.
 #
 # It DOES NOT contain:
-#
-#   ❌ v10 source code
-#   ❌ v11 source code
-#   ❌ UTL/DVDH implementation
-#   ❌ DSI calculation
-#   ❌ Effective Mass calculation
-#   ❌ PLV calculation
-#   ❌ Lyapunov calculation
-#   ❌ RQA calculation
-#   ❌ proprietary coupling equations
-#   ❌ MCMC implementation
-#   ❌ proprietary coefficients
-#   ❌ model weights
-#   ❌ private endpoints
-#   ❌ API keys / secrets
+#   ❌ proprietary physics coupling equations / models
+#   ❌ MCMC / UTL / DVDH / DSI private algorithm source
 #   ❌ clinical diagnosis
+#   ❌ flight-control actuators
+#   ❌ autonomous safety decisions
 #
 # It ONLY:
-#
 #   1. accepts public metric values
-#   2. validates numerical values
+#   2. validates numerical values & limits
 #   3. records provenance
 #   4. assigns public quality states
 #   5. summarizes metric collections
-#   6. preserves claim-classification boundaries
-#
-# IMPORTANT:
-# A metric value supplied by a private engine is treated as
-# an OBSERVED/RETURNED RESULT. This module does not infer
-# the proprietary algorithm that generated it.
+#   6. supports Modules 19–22
+#   7. preserves claim-classification boundaries
+#   8. preserves raw-data immutability
 #
 # ============================================================
 
@@ -51,6 +37,7 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+
 import hashlib
 import json
 import math
@@ -62,13 +49,14 @@ import uuid
 # ============================================================
 
 MODULE_NAME = "metrics"
-MODULE_VERSION = "1.0.0"
+MODULE_VERSION = "1.1.1"
 METRICS_SCHEMA_VERSION = "1.0"
 
 PROPRIETARY_ALGORITHMS_INCLUDED = False
 RAW_DATA_MODIFICATION_ALLOWED = False
 MEDICAL_DIAGNOSIS_SUPPORTED = False
 FLIGHT_CERTIFICATION_SUPPORTED = False
+AUTONOMOUS_DECISION_SUPPORTED = False
 
 
 # ============================================================
@@ -76,46 +64,44 @@ FLIGHT_CERTIFICATION_SUPPORTED = False
 # ============================================================
 
 class MetricCategory(str, Enum):
-    """
-    Public metric categories.
-
-    These are descriptive categories only.
-    They do not define the proprietary calculation.
-    """
 
     SIGNAL = "SIGNAL"
     STATISTICAL = "STATISTICAL"
+
     ENTROPY = "ENTROPY"
     VARIANCE = "VARIANCE"
     GRADIENT = "GRADIENT"
     COUPLING = "COUPLING"
+
     TRANSITION = "TRANSITION"
     ANOMALY = "ANOMALY"
+
     QUALITY = "QUALITY"
     UNCERTAINTY = "UNCERTAINTY"
+    EXPLAINABILITY = "EXPLAINABILITY"
+
     TEMPORAL = "TEMPORAL"
     SPECTRAL = "SPECTRAL"
     SPATIAL = "SPATIAL"
+
     CUSTOM = "CUSTOM"
 
 
 class MetricValueType(str, Enum):
+
     SCALAR = "SCALAR"
     VECTOR = "VECTOR"
     SERIES = "SERIES"
     MATRIX = "MATRIX"
+
     BOOLEAN = "BOOLEAN"
     CATEGORICAL = "CATEGORICAL"
     TEXT = "TEXT"
+
     NULL = "NULL"
 
 
 class MetricQuality(str, Enum):
-    """
-    Public quality state.
-
-    This is NOT a scientific significance judgment.
-    """
 
     VALID = "VALID"
     INVALID = "INVALID"
@@ -126,13 +112,6 @@ class MetricQuality(str, Enum):
 
 
 class ClaimClass(str, Enum):
-    """
-    Public evidence/claim classification.
-
-    C1 = directly measured / directly supplied observation
-    C2 = computationally derived public result
-    C3 = hypothesis / interpretation / future application
-    """
 
     C1 = "C1"
     C2 = "C2"
@@ -144,14 +123,26 @@ class ClaimClass(str, Enum):
 # ============================================================
 
 def utc_timestamp() -> str:
+    """
+    Return timezone-aware UTC timestamp.
+    """
+
     return datetime.now(timezone.utc).isoformat()
 
 
 def generate_metric_id() -> str:
+    """
+    Generate unique public metric identifier.
+    """
+
     return f"metric-{uuid.uuid4().hex}"
 
 
 def canonical_json(payload: Any) -> str:
+    """
+    Deterministic JSON serialization.
+    """
+
     return json.dumps(
         payload,
         sort_keys=True,
@@ -162,6 +153,10 @@ def canonical_json(payload: Any) -> str:
 
 
 def calculate_sha256(payload: Any) -> str:
+    """
+    Calculate deterministic SHA-256 hash.
+    """
+
     return hashlib.sha256(
         canonical_json(payload).encode("utf-8")
     ).hexdigest()
@@ -169,9 +164,11 @@ def calculate_sha256(payload: Any) -> str:
 
 def is_finite_number(value: Any) -> bool:
     """
-    Return True only for finite int/float-like scalar values.
+    Return True only for finite real numeric values.
 
-    Booleans are explicitly excluded.
+    bool is intentionally rejected because:
+        True == 1
+        False == 0
     """
 
     if isinstance(value, bool):
@@ -183,7 +180,13 @@ def is_finite_number(value: Any) -> bool:
     return math.isfinite(float(value))
 
 
-def safe_float(value: Any) -> Optional[float]:
+def safe_float(
+    value: Any,
+) -> Optional[float]:
+    """
+    Convert finite numeric value to float.
+    """
+
     if not is_finite_number(value):
         return None
 
@@ -194,6 +197,9 @@ def sanitize_identifier(
     value: Any,
     fallback: str = "unknown",
 ) -> str:
+    """
+    Sanitize public identifier.
+    """
 
     if value is None:
         return fallback
@@ -206,34 +212,63 @@ def sanitize_identifier(
     return text[:128]
 
 
-def infer_value_type(value: Any) -> MetricValueType:
+def is_numeric_uncertainty(
+    value: Any,
+) -> bool:
+    """
+    Check whether uncertainty is a simple finite scalar.
+    """
+
+    return is_finite_number(value)
+
+
+def validate_uncertainty_value(
+    value: Any,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate public uncertainty representation.
+
+    Supported forms:
+
+        1. None
+        2. finite non-negative scalar
+        3. dictionary representing structured uncertainty
+
+    Structured uncertainty is intentionally passed to
+    Module 21 for detailed validation.
+    """
 
     if value is None:
-        return MetricValueType.NULL
+        return True, None
 
-    if isinstance(value, bool):
-        return MetricValueType.BOOLEAN
+    # Simple scalar uncertainty
+    if isinstance(value, (int, float)):
 
-    if is_finite_number(value):
-        return MetricValueType.SCALAR
+        if not is_finite_number(value):
+            return (
+                False,
+                "Uncertainty scalar must be finite.",
+            )
 
-    if isinstance(value, str):
-        return MetricValueType.TEXT
+        if float(value) < 0:
+            return (
+                False,
+                "Uncertainty scalar cannot be negative.",
+            )
 
-    if isinstance(value, (list, tuple)):
+        return True, None
 
-        if all(
-            is_finite_number(item)
-            for item in value
-        ):
-            return MetricValueType.VECTOR
-
-        return MetricValueType.SERIES
-
+    # Structured uncertainty
     if isinstance(value, dict):
-        return MetricValueType.CATEGORICAL
 
-    return MetricValueType.CATEGORICAL
+        # Module 21 owns detailed uncertainty semantics.
+        return True, None
+
+    return (
+        False,
+        "Uncertainty must be a finite non-negative scalar "
+        "or a structured dictionary.",
+    )
 
 
 # ============================================================
@@ -242,11 +277,6 @@ def infer_value_type(value: Any) -> MetricValueType:
 
 @dataclass(frozen=True)
 class MetricDefinition:
-    """
-    Public metadata describing a metric.
-
-    It does NOT describe the proprietary equation.
-    """
 
     name: str
 
@@ -270,7 +300,9 @@ class MetricDefinition:
         default_factory=dict
     )
 
-    def validate(self) -> Tuple[bool, List[str]]:
+    def validate(
+        self,
+    ) -> Tuple[bool, List[str]]:
 
         errors: List[str] = []
 
@@ -315,12 +347,6 @@ class MetricDefinition:
 
 @dataclass
 class MetricValue:
-    """
-    Public metric result.
-
-    This object stores the result, not the algorithm that
-    produced it.
-    """
 
     metric_id: str
 
@@ -328,7 +354,9 @@ class MetricValue:
 
     value: Any = None
 
-    quality: MetricQuality = MetricQuality.UNVERIFIED
+    quality: MetricQuality = (
+        MetricQuality.UNVERIFIED
+    )
 
     confidence: Optional[float] = None
 
@@ -350,9 +378,15 @@ class MetricValue:
         default_factory=dict
     )
 
-    def validate(self) -> Tuple[bool, List[str]]:
+    def validate(
+        self,
+    ) -> Tuple[bool, List[str]]:
 
         errors: List[str] = []
+
+        # ----------------------------------------------------
+        # Definition
+        # ----------------------------------------------------
 
         definition_valid, definition_errors = (
             self.definition.validate()
@@ -363,13 +397,18 @@ class MetricValue:
                 definition_errors
             )
 
+        # ----------------------------------------------------
+        # Metric ID
+        # ----------------------------------------------------
+
         if not self.metric_id:
+
             errors.append(
                 "metric_id is required."
             )
 
         # ----------------------------------------------------
-        # Missing value
+        # Null handling
         # ----------------------------------------------------
 
         if self.value is None:
@@ -379,6 +418,18 @@ class MetricValue:
                 errors.append(
                     f"Metric '{self.definition.name}' "
                     "does not allow null values."
+                )
+
+            # Still validate confidence/uncertainty.
+            uncertainty_valid, uncertainty_error = (
+                validate_uncertainty_value(
+                    self.uncertainty
+                )
+            )
+
+            if not uncertainty_valid:
+                errors.append(
+                    uncertainty_error
                 )
 
             return (
@@ -398,19 +449,35 @@ class MetricValue:
             if not is_finite_number(
                 self.value
             ):
+
                 errors.append(
                     f"Metric '{self.definition.name}' "
                     "contains a non-finite scalar."
                 )
 
-            if self.definition.name.lower() == "confidence":
-                if not (0.0 <= float(self.value) <= 1.0):
-                    errors.append(
-                        "Confidence metric value must be between 0 and 1."
-                    )
+            # Confidence metric itself must be [0,1].
+            if (
+                self.definition.name.lower()
+                == "confidence"
+            ):
+
+                if is_finite_number(
+                    self.value
+                ):
+
+                    if not (
+                        0.0
+                        <= float(self.value)
+                        <= 1.0
+                    ):
+
+                        errors.append(
+                            "Confidence metric value "
+                            "must be between 0 and 1."
+                        )
 
         # ----------------------------------------------------
-        # Confidence validation
+        # Confidence metadata
         # ----------------------------------------------------
 
         if self.confidence is not None:
@@ -434,16 +501,46 @@ class MetricValue:
                     "0 and 1."
                 )
 
+        # ----------------------------------------------------
+        # Uncertainty boundary
+        # ----------------------------------------------------
+
+        uncertainty_valid, uncertainty_error = (
+            validate_uncertainty_value(
+                self.uncertainty
+            )
+        )
+
+        if not uncertainty_valid:
+
+            errors.append(
+                uncertainty_error
+            )
+
         return (
             len(errors) == 0,
             errors,
         )
 
-    def evaluate_quality(self) -> MetricQuality:
+    def evaluate_quality(
+        self,
+    ) -> MetricQuality:
+
+        # ----------------------------------------------------
+        # Missing
+        # ----------------------------------------------------
 
         if self.value is None:
-            self.quality = MetricQuality.MISSING
+
+            self.quality = (
+                MetricQuality.MISSING
+            )
+
             return self.quality
+
+        # ----------------------------------------------------
+        # Scalar quality
+        # ----------------------------------------------------
 
         if (
             self.definition.value_type
@@ -453,15 +550,34 @@ class MetricValue:
             if not is_finite_number(
                 self.value
             ):
+
                 self.quality = (
                     MetricQuality.NONFINITE
                 )
+
                 return self.quality
 
-            if self.definition.name.lower() == "confidence":
-                if not (0.0 <= float(self.value) <= 1.0):
-                    self.quality = MetricQuality.INVALID
+            # Confidence metric boundary
+            if (
+                self.definition.name.lower()
+                == "confidence"
+            ):
+
+                if not (
+                    0.0
+                    <= float(self.value)
+                    <= 1.0
+                ):
+
+                    self.quality = (
+                        MetricQuality.INVALID
+                    )
+
                     return self.quality
+
+        # ----------------------------------------------------
+        # Confidence metadata
+        # ----------------------------------------------------
 
         if self.confidence is not None:
 
@@ -472,6 +588,7 @@ class MetricValue:
                 self.quality = (
                     MetricQuality.INVALID
                 )
+
                 return self.quality
 
             if not (
@@ -483,46 +600,103 @@ class MetricValue:
                 self.quality = (
                     MetricQuality.INVALID
                 )
+
                 return self.quality
 
-        self.quality = MetricQuality.VALID
+        # ----------------------------------------------------
+        # Uncertainty boundary
+        # ----------------------------------------------------
+
+        uncertainty_valid, _ = (
+            validate_uncertainty_value(
+                self.uncertainty
+            )
+        )
+
+        if not uncertainty_valid:
+
+            self.quality = (
+                MetricQuality.INVALID
+            )
+
+            return self.quality
+
+        # ----------------------------------------------------
+        # Passed public validation
+        # ----------------------------------------------------
+
+        self.quality = (
+            MetricQuality.VALID
+        )
 
         return self.quality
 
     def fingerprint(self) -> str:
 
         payload = {
+
             "metric_id": self.metric_id,
-            "name": self.definition.name,
-            "category": self.definition.category.value,
-            "value_type": self.definition.value_type.value,
+
+            "name": (
+                self.definition.name
+            ),
+
+            "category": (
+                self.definition.category.value
+            ),
+
+            "value_type": (
+                self.definition.value_type.value
+            ),
+
             "value": self.value,
-            "quality": self.quality.value,
+
+            "quality": (
+                self.quality.value
+            ),
+
             "confidence": self.confidence,
+
             "uncertainty": self.uncertainty,
-            "source_dataset_id": self.source_dataset_id,
-            "source_hash": self.source_hash,
+
+            "source_dataset_id": (
+                self.source_dataset_id
+            ),
+
+            "source_hash": (
+                self.source_hash
+            ),
         }
 
-        return calculate_sha256(payload)
+        return calculate_sha256(
+            payload
+        )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> Dict[str, Any]:
 
         result = asdict(self)
 
-        result["definition"]["category"] = (
-            self.definition.category.value
+        result["definition"][
+            "category"
+        ] = self.definition.category.value
+
+        result["definition"][
+            "value_type"
+        ] = self.definition.value_type.value
+
+        result["definition"][
+            "claim_class"
+        ] = self.definition.claim_class.value
+
+        result["quality"] = (
+            self.quality.value
         )
 
-        result["definition"]["value_type"] = (
-            self.definition.value_type.value
+        result["fingerprint"] = (
+            self.fingerprint()
         )
-
-        result["definition"]["claim_class"] = (
-            self.definition.claim_class.value
-        )
-
-        result["quality"] = self.quality.value
 
         return result
 
@@ -533,9 +707,6 @@ class MetricValue:
 
 @dataclass
 class MetricSet:
-    """
-    Collection of public metrics belonging to one analysis.
-    """
 
     set_id: str
 
@@ -561,16 +732,20 @@ class MetricSet:
         default_factory=dict
     )
 
-    def validate(self) -> Tuple[bool, List[str]]:
+    def validate(
+        self,
+    ) -> Tuple[bool, List[str]]:
 
         errors: List[str] = []
 
         if not self.set_id:
+
             errors.append(
                 "set_id is required."
             )
 
         if not self.dataset_id:
+
             errors.append(
                 "dataset_id is required."
             )
@@ -584,13 +759,17 @@ class MetricSet:
             )
 
             if not valid:
+
                 errors.extend(
                     metric_errors
                 )
 
-            name = metric.definition.name
+            name = (
+                metric.definition.name
+            )
 
             if name in seen_names:
+
                 errors.append(
                     f"Duplicate metric name: {name}"
                 )
@@ -602,9 +781,12 @@ class MetricSet:
             errors,
         )
 
-    def evaluate_quality(self) -> None:
+    def evaluate_quality(
+        self,
+    ) -> None:
 
         for metric in self.metrics:
+
             metric.evaluate_quality()
 
     def get(
@@ -612,7 +794,11 @@ class MetricSet:
         name: str,
     ) -> Optional[MetricValue]:
 
-        name = str(name).strip().lower()
+        name = (
+            str(name)
+            .strip()
+            .lower()
+        )
 
         for metric in self.metrics:
 
@@ -620,18 +806,23 @@ class MetricSet:
                 metric.definition.name.lower()
                 == name
             ):
+
                 return metric
 
         return None
 
-    def names(self) -> List[str]:
+    def names(
+        self,
+    ) -> List[str]:
 
         return [
             metric.definition.name
             for metric in self.metrics
         ]
 
-    def quality_summary(self) -> Dict[str, int]:
+    def quality_summary(
+        self,
+    ) -> Dict[str, int]:
 
         summary = {
             quality.value: 0
@@ -639,13 +830,16 @@ class MetricSet:
         }
 
         for metric in self.metrics:
+
             summary[
                 metric.quality.value
             ] += 1
 
         return summary
 
-    def claim_class_summary(self) -> Dict[str, int]:
+    def claim_class_summary(
+        self,
+    ) -> Dict[str, int]:
 
         summary = {
             claim.value: 0
@@ -653,46 +847,73 @@ class MetricSet:
         }
 
         for metric in self.metrics:
+
             summary[
                 metric.definition.claim_class.value
             ] += 1
 
         return summary
 
-    def fingerprint(self) -> str:
+    def fingerprint(
+        self,
+    ) -> str:
 
         payload = {
+
             "set_id": self.set_id,
+
             "dataset_id": self.dataset_id,
-            "schema_version": self.schema_version,
+
+            "schema_version": (
+                self.schema_version
+            ),
+
             "metrics": [
                 metric.fingerprint()
                 for metric in self.metrics
             ],
         }
 
-        return calculate_sha256(payload)
+        return calculate_sha256(
+            payload
+        )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(
+        self,
+    ) -> Dict[str, Any]:
 
         return {
+
             "set_id": self.set_id,
+
             "dataset_id": self.dataset_id,
-            "schema_version": self.schema_version,
+
+            "schema_version": (
+                self.schema_version
+            ),
+
             "created_at": self.created_at,
+
             "provenance": self.provenance,
+
             "metadata": self.metadata,
+
             "metrics": [
                 metric.to_dict()
                 for metric in self.metrics
             ],
+
             "quality_summary": (
                 self.quality_summary()
             ),
+
             "claim_class_summary": (
                 self.claim_class_summary()
             ),
-            "fingerprint": self.fingerprint(),
+
+            "fingerprint": (
+                self.fingerprint()
+            ),
         }
 
     def to_json(
@@ -709,7 +930,7 @@ class MetricSet:
 
 
 # ============================================================
-# STANDARD METRIC REGISTRY
+# METRIC REGISTRY
 # ============================================================
 
 class MetricRegistry:
@@ -737,7 +958,9 @@ class MetricRegistry:
                 + " | ".join(errors)
             )
 
-        key = definition.name.lower()
+        key = (
+            definition.name.lower()
+        )
 
         if key in self._definitions:
 
@@ -746,9 +969,9 @@ class MetricRegistry:
                 f"{definition.name}"
             )
 
-        self._definitions[key] = (
-            definition
-        )
+        self._definitions[
+            key
+        ] = definition
 
     def get(
         self,
@@ -756,31 +979,41 @@ class MetricRegistry:
     ) -> Optional[MetricDefinition]:
 
         return self._definitions.get(
-            str(name).strip().lower()
+            str(name)
+            .strip()
+            .lower()
         )
 
-    def names(self) -> List[str]:
+    def names(
+        self,
+    ) -> List[str]:
 
         return sorted(
             self._definitions.keys()
         )
 
-    def definitions(self) -> List[MetricDefinition]:
+    def definitions(
+        self,
+    ) -> List[MetricDefinition]:
 
         return list(
             self._definitions.values()
         )
 
 
-def create_standard_metric_registry() -> MetricRegistry:
-    """
-    Create the public metric registry.
+# ============================================================
+# STANDARD PUBLIC METRIC REGISTRY
+# Harmonized with Modules 19–22
+# ============================================================
 
-    These are interface-level metric names.
-    No proprietary equations are included.
-    """
+def create_standard_metric_registry(
+) -> MetricRegistry:
 
     registry = MetricRegistry()
+
+    # --------------------------------------------------------
+    # Core public metrics
+    # --------------------------------------------------------
 
     registry.register(
         MetricDefinition(
@@ -788,10 +1021,8 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.ENTROPY,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public entropy-related metric returned "
-                "by an analysis component."
+                "Public entropy metric."
             ),
-            claim_class=ClaimClass.C2,
         )
     )
 
@@ -801,9 +1032,8 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.VARIANCE,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public variance-related metric."
+                "Public variance metric."
             ),
-            claim_class=ClaimClass.C2,
         )
     )
 
@@ -813,9 +1043,8 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.GRADIENT,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public gradient-related metric."
+                "Public gradient metric."
             ),
-            claim_class=ClaimClass.C2,
         )
     )
 
@@ -825,39 +1054,14 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.COUPLING,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public coupling metric supplied by "
-                "an analysis component."
+                "Public coupling metric."
             ),
-            claim_class=ClaimClass.C2,
         )
     )
 
-    registry.register(
-        MetricDefinition(
-            name="transition_index",
-            category=MetricCategory.TRANSITION,
-            value_type=MetricValueType.SCALAR,
-            description=(
-                "Public transition-related index."
-            ),
-            claim_class=ClaimClass.C2,
-            human_review_required=True,
-        )
-    )
-
-    registry.register(
-        MetricDefinition(
-            name="anomaly_score",
-            category=MetricCategory.ANOMALY,
-            value_type=MetricValueType.SCALAR,
-            description=(
-                "Research anomaly-prioritization score; "
-                "not a diagnosis."
-            ),
-            claim_class=ClaimClass.C2,
-            human_review_required=True,
-        )
-    )
+    # --------------------------------------------------------
+    # Quality
+    # --------------------------------------------------------
 
     registry.register(
         MetricDefinition(
@@ -865,9 +1069,8 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.QUALITY,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public signal or image quality indicator."
+                "Normalized public signal-quality indicator."
             ),
-            claim_class=ClaimClass.C2,
         )
     )
 
@@ -877,12 +1080,14 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.QUALITY,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public confidence value associated with "
-                "a computational result."
+                "Normalized computational confidence indicator."
             ),
-            claim_class=ClaimClass.C2,
         )
     )
+
+    # --------------------------------------------------------
+    # Uncertainty
+    # --------------------------------------------------------
 
     registry.register(
         MetricDefinition(
@@ -890,10 +1095,138 @@ def create_standard_metric_registry() -> MetricRegistry:
             category=MetricCategory.UNCERTAINTY,
             value_type=MetricValueType.SCALAR,
             description=(
-                "Public uncertainty estimate supplied by "
-                "an analysis component."
+                "Public uncertainty magnitude."
             ),
-            claim_class=ClaimClass.C2,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Module 19 — Transition Analysis
+    # --------------------------------------------------------
+
+    registry.register(
+        MetricDefinition(
+            name="transition_index",
+            category=MetricCategory.TRANSITION,
+            value_type=MetricValueType.SCALAR,
+            human_review_required=True,
+            description=(
+                "Public transition indicator."
+            ),
+        )
+    )
+
+    registry.register(
+        MetricDefinition(
+            name="transition_score",
+            category=MetricCategory.TRANSITION,
+            value_type=MetricValueType.SCALAR,
+            human_review_required=True,
+            description=(
+                "Public transition-review score."
+            ),
+        )
+    )
+
+    # --------------------------------------------------------
+    # Module 20 — Anomaly Scoring
+    # --------------------------------------------------------
+
+    registry.register(
+        MetricDefinition(
+            name="anomaly_score",
+            category=MetricCategory.ANOMALY,
+            value_type=MetricValueType.SCALAR,
+            human_review_required=True,
+            description=(
+                "Research anomaly-prioritization indicator."
+            ),
+        )
+    )
+
+    registry.register(
+        MetricDefinition(
+            name="anomaly_rank",
+            category=MetricCategory.ANOMALY,
+            value_type=MetricValueType.SCALAR,
+            human_review_required=True,
+            description=(
+                "Research ordering/index for anomaly review."
+            ),
+        )
+    )
+
+    # --------------------------------------------------------
+    # Module 21 — Uncertainty
+    # --------------------------------------------------------
+
+    registry.register(
+        MetricDefinition(
+            name="uncertainty_lower",
+            category=MetricCategory.UNCERTAINTY,
+            value_type=MetricValueType.SCALAR,
+            description=(
+                "Lower reported uncertainty bound."
+            ),
+        )
+    )
+
+    registry.register(
+        MetricDefinition(
+            name="uncertainty_upper",
+            category=MetricCategory.UNCERTAINTY,
+            value_type=MetricValueType.SCALAR,
+            description=(
+                "Upper reported uncertainty bound."
+            ),
+        )
+    )
+
+    registry.register(
+        MetricDefinition(
+            name="coverage_probability",
+            category=MetricCategory.UNCERTAINTY,
+            value_type=MetricValueType.SCALAR,
+            description=(
+                "User-supplied statistical coverage quantity."
+            ),
+        )
+    )
+
+    # --------------------------------------------------------
+    # Module 22 — Explainability
+    # --------------------------------------------------------
+
+    registry.register(
+        MetricDefinition(
+            name="evidence_count",
+            category=MetricCategory.EXPLAINABILITY,
+            value_type=MetricValueType.SCALAR,
+            description=(
+                "Number of public evidence items."
+            ),
+        )
+    )
+
+    registry.register(
+        MetricDefinition(
+            name="supporting_evidence_count",
+            category=MetricCategory.EXPLAINABILITY,
+            value_type=MetricValueType.SCALAR,
+            description=(
+                "Number of supporting evidence items."
+            ),
+        )
+    )
+
+    registry.register(
+        MetricDefinition(
+            name="contradicting_evidence_count",
+            category=MetricCategory.EXPLAINABILITY,
+            value_type=MetricValueType.SCALAR,
+            description=(
+                "Number of contradicting evidence items."
+            ),
         )
     )
 
@@ -913,11 +1246,17 @@ def create_metric(
     uncertainty: Optional[Any] = None,
     source_dataset_id: Optional[str] = None,
     source_hash: Optional[str] = None,
-    provenance: Optional[Dict[str, Any]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    provenance: Optional[
+        Dict[str, Any]
+    ] = None,
+    metadata: Optional[
+        Dict[str, Any]
+    ] = None,
 ) -> MetricValue:
 
-    definition = registry.get(name)
+    definition = registry.get(
+        name
+    )
 
     if definition is None:
 
@@ -926,11 +1265,17 @@ def create_metric(
         )
 
     metric = MetricValue(
+
         metric_id=generate_metric_id(),
+
         definition=definition,
+
         value=value,
+
         confidence=confidence,
+
         uncertainty=uncertainty,
+
         source_dataset_id=(
             sanitize_identifier(
                 source_dataset_id
@@ -938,10 +1283,13 @@ def create_metric(
             if source_dataset_id
             else None
         ),
+
         source_hash=source_hash,
+
         provenance=(
             provenance or {}
         ),
+
         metadata=(
             metadata or {}
         ),
@@ -958,21 +1306,39 @@ def create_metric(
 
 def create_metric_set(
     dataset_id: str,
-    metrics: Optional[List[MetricValue]] = None,
+    metrics: Optional[
+        List[MetricValue]
+    ] = None,
     *,
-    provenance: Optional[Dict[str, Any]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    provenance: Optional[
+        Dict[str, Any]
+    ] = None,
+    metadata: Optional[
+        Dict[str, Any]
+    ] = None,
 ) -> MetricSet:
 
     metric_set = MetricSet(
-        set_id=f"metric-set-{uuid.uuid4().hex}",
-        dataset_id=sanitize_identifier(
-            dataset_id
+
+        set_id=(
+            f"metric-set-"
+            f"{uuid.uuid4().hex}"
         ),
-        metrics=metrics or [],
+
+        dataset_id=(
+            sanitize_identifier(
+                dataset_id
+            )
+        ),
+
+        metrics=(
+            metrics or []
+        ),
+
         provenance=(
             provenance or {}
         ),
+
         metadata=(
             metadata or {}
         ),
@@ -984,7 +1350,7 @@ def create_metric_set(
 
 
 # ============================================================
-# SAFE SUMMARY FUNCTIONS
+# SAFE SUMMARY
 # ============================================================
 
 def summarize_metric_set(
@@ -1003,45 +1369,58 @@ def summarize_metric_set(
         if (
             metric.definition.value_type
             == MetricValueType.SCALAR
-            and is_finite_number(metric.value)
+            and is_finite_number(
+                metric.value
+            )
         ):
 
             numeric_values[
                 metric.definition.name
-            ] = float(metric.value)
+            ] = float(
+                metric.value
+            )
 
     return {
-        "dataset_id": metric_set.dataset_id,
-        "metric_count": len(
-            metric_set.metrics
-        ),
-        "numeric_metric_count": len(
-            numeric_values
-        ),
-        "metric_names": metric_set.names(),
-        "quality_summary": (
-            metric_set.quality_summary()
-        ),
-        "claim_class_summary": (
-            metric_set.claim_class_summary()
-        ),
-        "numeric_values": numeric_values,
-        "fingerprint": (
-            metric_set.fingerprint()
-        ),
+
+        "dataset_id":
+            metric_set.dataset_id,
+
+        "metric_count":
+            len(metric_set.metrics),
+
+        "numeric_metric_count":
+            len(numeric_values),
+
+        "metric_names":
+            metric_set.names(),
+
+        "quality_summary":
+            metric_set.quality_summary(),
+
+        "claim_class_summary":
+            metric_set.claim_class_summary(),
+
+        "numeric_values":
+            numeric_values,
+
+        "fingerprint":
+            metric_set.fingerprint(),
     }
 
 
 # ============================================================
-# PUBLIC PAYLOAD VALIDATION
+# PAYLOAD VALIDATION
 # ============================================================
 
 def validate_metric_payload(
     payload: Dict[str, Any],
-    registry: Optional[MetricRegistry] = None,
+    registry: Optional[
+        MetricRegistry
+    ] = None,
 ) -> Tuple[bool, List[str]]:
 
     if registry is None:
+
         registry = (
             create_standard_metric_registry()
         )
@@ -1052,48 +1431,89 @@ def validate_metric_payload(
         payload,
         dict,
     ):
+
         return (
             False,
-            ["Metric payload must be a dictionary."],
+            [
+                "Metric payload must be a dictionary."
+            ],
         )
 
-    name = payload.get("name")
+    name = payload.get(
+        "name"
+    )
 
     if not name:
+
         errors.append(
             "Metric payload requires 'name'."
         )
-        return False, errors
 
-    definition = registry.get(name)
+        return (
+            False,
+            errors,
+        )
+
+    definition = registry.get(
+        name
+    )
 
     if definition is None:
+
         errors.append(
             f"Unknown metric: {name}"
         )
-        return False, errors
+
+        return (
+            False,
+            errors,
+        )
 
     value = payload.get(
         "value"
     )
+
+    # --------------------------------------------------------
+    # Scalar
+    # --------------------------------------------------------
 
     if (
         definition.value_type
         == MetricValueType.SCALAR
     ):
 
-        if value is not None and not is_finite_number(
-            value
+        if (
+            value is not None
+            and not is_finite_number(
+                value
+            )
         ):
 
             errors.append(
-                f"Metric '{name}' requires "
-                "a finite scalar."
+                f"Metric '{name}' "
+                "requires a finite scalar."
             )
 
-        if definition.name.lower() == "confidence" and value is not None:
-            if not (0.0 <= float(value) <= 1.0):
-                errors.append("Confidence metric value must be between 0 and 1.")
+        if (
+            definition.name.lower()
+            == "confidence"
+            and value is not None
+        ):
+
+            if not (
+                0.0
+                <= float(value)
+                <= 1.0
+            ):
+
+                errors.append(
+                    "Confidence metric value "
+                    "must be between 0 and 1."
+                )
+
+    # --------------------------------------------------------
+    # Confidence metadata
+    # --------------------------------------------------------
 
     confidence = payload.get(
         "confidence"
@@ -1119,6 +1539,26 @@ def validate_metric_payload(
                 "Confidence must be between 0 and 1."
             )
 
+    # --------------------------------------------------------
+    # Uncertainty
+    # --------------------------------------------------------
+
+    uncertainty = payload.get(
+        "uncertainty"
+    )
+
+    uncertainty_valid, uncertainty_error = (
+        validate_uncertainty_value(
+            uncertainty
+        )
+    )
+
+    if not uncertainty_valid:
+
+        errors.append(
+            uncertainty_error
+        )
+
     return (
         len(errors) == 0,
         errors,
@@ -1126,7 +1566,7 @@ def validate_metric_payload(
 
 
 # ============================================================
-# PUBLIC METRIC CONTRACT
+# METRICS CONTRACT
 # ============================================================
 
 def metrics_contract() -> Dict[str, Any]:
@@ -1136,39 +1576,55 @@ def metrics_contract() -> Dict[str, Any]:
     )
 
     return {
-        "module": MODULE_NAME,
-        "version": MODULE_VERSION,
-        "schema_version": (
-            METRICS_SCHEMA_VERSION
-        ),
+
+        "module":
+            MODULE_NAME,
+
+        "version":
+            MODULE_VERSION,
+
+        "schema_version":
+            METRICS_SCHEMA_VERSION,
 
         "purpose": (
             "Public analytics result validation, "
-            "quality assessment, and summarization."
+            "quality assessment, provenance, "
+            "and metric summarization."
         ),
 
-        "proprietary_algorithms_included": (
-            PROPRIETARY_ALGORITHMS_INCLUDED
-        ),
+        "proprietary_algorithms_included":
+            PROPRIETARY_ALGORITHMS_INCLUDED,
 
-        "raw_data_modification_allowed": (
-            RAW_DATA_MODIFICATION_ALLOWED
-        ),
+        "raw_data_modification_allowed":
+            RAW_DATA_MODIFICATION_ALLOWED,
 
-        "medical_diagnosis_supported": (
-            MEDICAL_DIAGNOSIS_SUPPORTED
-        ),
+        "medical_diagnosis_supported":
+            MEDICAL_DIAGNOSIS_SUPPORTED,
 
-        "flight_certification_supported": (
-            FLIGHT_CERTIFICATION_SUPPORTED
-        ),
+        "flight_certification_supported":
+            FLIGHT_CERTIFICATION_SUPPORTED,
 
-        "registered_metrics": registry.names(),
+        "autonomous_decision_supported":
+            AUTONOMOUS_DECISION_SUPPORTED,
+
+        "registered_metrics":
+            registry.names(),
 
         "calculation_policy": (
-            "Metric values are accepted as public results; "
-            "proprietary generation algorithms are not "
-            "implemented in this module."
+            "Metric values are accepted as public "
+            "results; proprietary generation algorithms "
+            "are not implemented in this module."
+        ),
+
+        "uncertainty_policy": (
+            "Simple finite non-negative uncertainty "
+            "values are validated here; structured "
+            "uncertainty semantics belong to Module 21."
+        ),
+
+        "review_policy": (
+            "Metrics marked human_review_required=True "
+            "must not be interpreted as autonomous decisions."
         ),
     }
 
@@ -1181,27 +1637,29 @@ def run_metrics_test() -> Dict[str, Any]:
 
     results: Dict[str, Any] = {}
 
-    # --------------------------------------------------------
-    # Registry
-    # --------------------------------------------------------
-
     registry = (
         create_standard_metric_registry()
     )
 
-    results["registry_created"] = (
-        isinstance(
-            registry,
-            MetricRegistry,
-        )
+    # --------------------------------------------------------
+    # Registry
+    # --------------------------------------------------------
+
+    results[
+        "registry_created"
+    ] = isinstance(
+        registry,
+        MetricRegistry,
     )
 
-    results["standard_metric_count"] = (
-        len(registry.names())
+    results[
+        "standard_metric_count_expanded"
+    ] = (
+        len(registry.names()) >= 17
     )
 
     # --------------------------------------------------------
-    # Basic metric
+    # Core metrics
     # --------------------------------------------------------
 
     entropy = create_metric(
@@ -1209,18 +1667,20 @@ def run_metrics_test() -> Dict[str, Any]:
         "entropy",
         1.234,
         confidence=0.95,
-        source_dataset_id="TEST_DATASET",
-        source_hash="a" * 64,
+        source_dataset_id=(
+            "TEST_DATASET"
+        ),
+        source_hash=(
+            "a" * 64
+        ),
     )
 
-    results["entropy_created"] = (
+    results[
+        "entropy_created"
+    ] = (
         entropy.quality
         == MetricQuality.VALID
     )
-
-    # --------------------------------------------------------
-    # Variance
-    # --------------------------------------------------------
 
     variance = create_metric(
         registry,
@@ -1229,13 +1689,15 @@ def run_metrics_test() -> Dict[str, Any]:
         confidence=0.90,
     )
 
-    results["variance_created"] = (
+    results[
+        "variance_created"
+    ] = (
         variance.quality
         == MetricQuality.VALID
     )
 
     # --------------------------------------------------------
-    # Anomaly score
+    # Anomaly
     # --------------------------------------------------------
 
     anomaly = create_metric(
@@ -1245,14 +1707,52 @@ def run_metrics_test() -> Dict[str, Any]:
         confidence=0.81,
     )
 
-    results["anomaly_is_c2"] = (
+    results[
+        "anomaly_is_c2"
+    ] = (
         anomaly.definition.claim_class
         == ClaimClass.C2
     )
 
-    results["anomaly_requires_review"] = (
-        anomaly.definition.human_review_required
+    results[
+        "anomaly_requires_review"
+    ] = (
+        anomaly.definition
+        .human_review_required
         is True
+    )
+
+    # --------------------------------------------------------
+    # Modules 19–22
+    # --------------------------------------------------------
+
+    transition = create_metric(
+        registry,
+        "transition_score",
+        0.88,
+    )
+
+    uncertainty_low = create_metric(
+        registry,
+        "uncertainty_lower",
+        0.12,
+    )
+
+    evidence_count = create_metric(
+        registry,
+        "evidence_count",
+        3,
+    )
+
+    results[
+        "module_19_22_metrics_registered"
+    ] = (
+        transition.quality
+        == MetricQuality.VALID
+        and uncertainty_low.quality
+        == MetricQuality.VALID
+        and evidence_count.quality
+        == MetricQuality.VALID
     )
 
     # --------------------------------------------------------
@@ -1265,13 +1765,15 @@ def run_metrics_test() -> Dict[str, Any]:
         1.5,
     )
 
-    results["invalid_confidence_detected"] = (
+    results[
+        "invalid_confidence_detected"
+    ] = (
         bad_confidence.quality
         == MetricQuality.INVALID
     )
 
     # --------------------------------------------------------
-    # Non-finite value
+    # NaN
     # --------------------------------------------------------
 
     nan_metric = create_metric(
@@ -1280,13 +1782,73 @@ def run_metrics_test() -> Dict[str, Any]:
         float("nan"),
     )
 
-    results["nan_detected"] = (
+    results[
+        "nan_detected"
+    ] = (
         nan_metric.quality
         == MetricQuality.NONFINITE
     )
 
     # --------------------------------------------------------
-    # Metric set
+    # Negative uncertainty
+    # --------------------------------------------------------
+
+    negative_uncertainty = create_metric(
+        registry,
+        "variance",
+        2.0,
+        uncertainty=-0.5,
+    )
+
+    results[
+        "negative_uncertainty_detected"
+    ] = (
+        negative_uncertainty.quality
+        == MetricQuality.INVALID
+    )
+
+    # --------------------------------------------------------
+    # NaN uncertainty
+    # --------------------------------------------------------
+
+    nan_uncertainty = create_metric(
+        registry,
+        "variance",
+        2.0,
+        uncertainty=float("nan"),
+    )
+
+    results[
+        "nan_uncertainty_detected"
+    ] = (
+        nan_uncertainty.quality
+        == MetricQuality.INVALID
+    )
+
+    # --------------------------------------------------------
+    # Structured uncertainty accepted
+    # --------------------------------------------------------
+
+    structured_uncertainty = create_metric(
+        registry,
+        "variance",
+        2.0,
+        uncertainty={
+            "uncertainty": 0.2,
+            "type": "standard_deviation",
+            "source": "computational",
+        },
+    )
+
+    results[
+        "structured_uncertainty_accepted"
+    ] = (
+        structured_uncertainty.quality
+        == MetricQuality.VALID
+    )
+
+    # --------------------------------------------------------
+    # Metric Set
     # --------------------------------------------------------
 
     metric_set = create_metric_set(
@@ -1295,17 +1857,26 @@ def run_metrics_test() -> Dict[str, Any]:
             entropy,
             variance,
             anomaly,
+            transition,
+            uncertainty_low,
+            evidence_count,
         ],
         provenance={
             "source": "synthetic_test"
         },
     )
 
-    valid, errors = metric_set.validate()
+    valid, errors = (
+        metric_set.validate()
+    )
 
-    results["metric_set_valid"] = valid
+    results[
+        "metric_set_valid"
+    ] = valid
 
-    results["metric_set_has_fingerprint"] = (
+    results[
+        "metric_set_has_fingerprint"
+    ] = (
         len(
             metric_set.fingerprint()
         )
@@ -1320,84 +1891,126 @@ def run_metrics_test() -> Dict[str, Any]:
         metric_set
     )
 
-    results["summary_created"] = (
-        summary["metric_count"]
-        == 3
+    results[
+        "summary_created"
+    ] = (
+        summary[
+            "metric_count"
+        ]
+        == 6
     )
 
     # --------------------------------------------------------
-    # Public payload validation
+    # Public payload
     # --------------------------------------------------------
 
     payload = {
-        "name": "coupling",
-        "value": -0.91,
-        "confidence": 0.88,
+
+        "name":
+            "coupling",
+
+        "value":
+            -0.91,
+
+        "confidence":
+            0.88,
+
+        "uncertainty":
+            0.05,
     }
 
-    payload_valid, payload_errors = (
+    payload_valid, _ = (
         validate_metric_payload(
             payload,
             registry,
         )
     )
 
-    results["payload_validation_passed"] = (
-        payload_valid
-    )
+    results[
+        "payload_validation_passed"
+    ] = payload_valid
 
     # --------------------------------------------------------
-    # Unknown/private metric rejection
+    # Private metric rejection
     # --------------------------------------------------------
 
     private_payload = {
-        "name": "internal_dsi_parameter",
-        "value": 0.1,
+
+        "name":
+            "internal_dsi_parameter",
+
+        "value":
+            0.1,
     }
 
-    private_valid, private_errors = (
+    private_valid, _ = (
         validate_metric_payload(
             private_payload,
             registry,
         )
     )
 
-    results["private_metric_rejected"] = (
+    results[
+        "private_metric_rejected"
+    ] = (
         private_valid is False
     )
 
     # --------------------------------------------------------
-    # Security flags
+    # Contract
     # --------------------------------------------------------
 
-    contract = metrics_contract()
+    contract = (
+        metrics_contract()
+    )
 
-    results["proprietary_code_absent"] = (
+    results[
+        "proprietary_code_absent"
+    ] = (
         contract[
             "proprietary_algorithms_included"
-        ] is False
+        ]
+        is False
     )
 
-    results["raw_modification_disabled"] = (
+    results[
+        "raw_modification_disabled"
+    ] = (
         contract[
             "raw_data_modification_allowed"
-        ] is False
+        ]
+        is False
     )
 
-    results["medical_diagnosis_disabled"] = (
+    results[
+        "medical_diagnosis_disabled"
+    ] = (
         contract[
             "medical_diagnosis_supported"
-        ] is False
+        ]
+        is False
     )
 
-    results["flight_certification_disabled"] = (
+    results[
+        "flight_certification_disabled"
+    ] = (
         contract[
             "flight_certification_supported"
-        ] is False
+        ]
+        is False
+    )
+
+    results[
+        "autonomous_decision_disabled"
+    ] = (
+        contract[
+            "autonomous_decision_supported"
+        ]
+        is False
     )
 
     # --------------------------------------------------------
-    # Final
+    # Final status
     # --------------------------------------------------------
 
     boolean_checks = [
@@ -1406,7 +2019,9 @@ def run_metrics_test() -> Dict[str, Any]:
         if isinstance(value, bool)
     ]
 
-    results["all_metric_checks_passed"] = (
+    results[
+        "all_metric_checks_passed"
+    ] = (
         all(boolean_checks)
         if boolean_checks
         else False
@@ -1416,56 +2031,99 @@ def run_metrics_test() -> Dict[str, Any]:
 
 
 # ============================================================
-# MODULE INFO
+# MODULE INFORMATION
 # ============================================================
 
 def module_info() -> Dict[str, Any]:
 
     return {
-        "module_name": MODULE_NAME,
-        "module_version": MODULE_VERSION,
-        "schema_version": (
-            METRICS_SCHEMA_VERSION
-        ),
+
+        "module_name":
+            MODULE_NAME,
+
+        "module_version":
+            MODULE_VERSION,
+
+        "schema_version":
+            METRICS_SCHEMA_VERSION,
 
         "role": (
-            "Public analytics output validation "
-            "and metric summarization layer."
+            "Public analytics output validation, "
+            "quality, provenance, and summarization layer."
         ),
 
-        "proprietary_algorithm_included": False,
-        "raw_data_modification": False,
-        "medical_diagnosis": False,
-        "flight_certification": False,
+        "proprietary_algorithm_included":
+            False,
+
+        "raw_data_modification":
+            False,
+
+        "medical_diagnosis":
+            False,
+
+        "flight_certification":
+            False,
+
+        "autonomous_decision":
+            False,
+
+        "harmonized_modules": [
+            "19_transition_analysis.py",
+            "20_anomaly_scoring.py",
+            "21_uncertainty.py",
+            "22_explainability.py",
+        ],
     }
 
 
 # ============================================================
-# SELF TEST
+# DIRECT EXECUTION
 # ============================================================
 
 if __name__ == "__main__":
 
     print("=" * 72)
+
     print(
-        "D³ VITAL-X — Module 18: metrics.py"
+        "D³ VITAL-X Space Intelligence Platform"
     )
+
+    print(
+        "Module 18 — metrics.py"
+    )
+
+    print(
+        f"Version: {MODULE_VERSION}"
+    )
+
     print("=" * 72)
 
     results = run_metrics_test()
 
     for key, value in results.items():
-        print(f"{key}: {value}")
+
+        status = (
+            "✅"
+            if value
+            else "❌"
+        )
+
+        print(
+            f"{status} {key}: {value}"
+        )
 
     print("=" * 72)
 
     if results[
         "all_metric_checks_passed"
     ]:
+
         print(
-            "✅ METRICS MODULE TEST: PASS"
+            "🚀 METRICS MODULE TEST: PASS"
         )
+
     else:
+
         print(
             "❌ METRICS MODULE TEST: REVIEW REQUIRED"
         )
