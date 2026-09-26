@@ -17,46 +17,37 @@ import numpy as np
 import streamlit as st
 
 # ============================================================
-# PROJECT PATH
+# PROJECT PATH & 06_ANALYTICS FOLDER INTEGRATION
 # ============================================================
-PROJECT_ROOT = Path("/content/D3-VITAL-X-Space-Intelligence-Platform")
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-if "." not in sys.path:
-    sys.path.insert(0, ".")
+CURRENT_DIR = Path(__file__).parent.resolve()
+ANALYTICS_PATH = CURRENT_DIR / "06_ANALYTICS"
+
+# 06_ANALYTICS ফোল্ডারটিকে Python Path-এ যুক্ত করা
+if ANALYTICS_PATH.exists() and str(ANALYTICS_PATH) not in sys.path:
+    sys.path.insert(0, str(ANALYTICS_PATH))
+
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.insert(0, str(CURRENT_DIR))
 
 # ============================================================
-# DYNAMIC IMPORTS FOR MODULES 18 TO 22
+# DYNAMIC IMPORTS FOR MODULES 18 TO 22 (FROM 06_ANALYTICS)
 # ============================================================
 ANALYTICS_AVAILABLE = False
 
 try:
-    from analytics.metrics import (
+    from metrics import (
         create_standard_metric_registry,
         create_metric,
         create_metric_set,
         summarize_metric_set,
     )
-    from analytics.transition_analysis import analyze_transition_1d, analyze_transition_2d
-    from analytics.anomaly_scoring import calculate_anomaly_score_1d, calculate_anomaly_score_2d
-    from analytics.uncertainty import evaluate_uncertainty_bounds
-    from analytics.explainability import generate_explainability_report
+    from transition_analysis import analyze_transition_1d, analyze_transition_2d
+    from anomaly_scoring import calculate_anomaly_score_1d, calculate_anomaly_score_2d
+    from uncertainty import evaluate_uncertainty_bounds
+    from explainability import generate_explainability_report
     ANALYTICS_AVAILABLE = True
-except ImportError:
-    try:
-        from metrics import (
-            create_standard_metric_registry,
-            create_metric,
-            create_metric_set,
-            summarize_metric_set,
-        )
-        from transition_analysis import analyze_transition_1d, analyze_transition_2d
-        from anomaly_scoring import calculate_anomaly_score_1d, calculate_anomaly_score_2d
-        from uncertainty import evaluate_uncertainty_bounds
-        from explainability import generate_explainability_report
-        ANALYTICS_AVAILABLE = True
-    except ImportError:
-        ANALYTICS_AVAILABLE = False
+except Exception as e:
+    ANALYTICS_AVAILABLE = False
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -161,10 +152,12 @@ with st.sidebar:
     st.success("Public Framework: Available")
     st.success("Input Layer: Available")
     st.success("Unified Data Layer: Available")
+    
     if ANALYTICS_AVAILABLE:
         st.success("Advanced Analytics (18–22): Connected")
     else:
         st.warning("Advanced Analytics: Under Development")
+        
     st.warning("NASA Integration: Under Development")
     st.warning("Live Mode: Under Development")
     st.divider()
