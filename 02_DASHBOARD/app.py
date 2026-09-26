@@ -1,3 +1,4 @@
+%%writefile app.py
 # ============================================================
 # D³ VITAL-X SPACE INTELLIGENCE PLATFORM
 # Module 57 — app.py
@@ -13,6 +14,7 @@ import io
 import hashlib
 import json
 from datetime import datetime, timezone
+import numpy as np
 import streamlit as st
 
 # ============================================================
@@ -21,6 +23,41 @@ import streamlit as st
 PROJECT_ROOT = Path("/content/D3-VITAL-X-Space-Intelligence-Platform")
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if "." not in sys.path:
+    sys.path.insert(0, ".")
+
+# ============================================================
+# DYNAMIC IMPORTS FOR MODULES 18 TO 22
+# ============================================================
+ANALYTICS_AVAILABLE = False
+
+try:
+    from analytics.metrics import (
+        create_standard_metric_registry,
+        create_metric,
+        create_metric_set,
+        summarize_metric_set,
+    )
+    from analytics.transition_analysis import analyze_transition_1d, analyze_transition_2d
+    from analytics.anomaly_scoring import calculate_anomaly_score_1d, calculate_anomaly_score_2d
+    from analytics.uncertainty import evaluate_uncertainty_bounds
+    from analytics.explainability import generate_explainability_report
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    try:
+        from metrics import (
+            create_standard_metric_registry,
+            create_metric,
+            create_metric_set,
+            summarize_metric_set,
+        )
+        from transition_analysis import analyze_transition_1d, analyze_transition_2d
+        from anomaly_scoring import calculate_anomaly_score_1d, calculate_anomaly_score_2d
+        from uncertainty import evaluate_uncertainty_bounds
+        from explainability import generate_explainability_report
+        ANALYTICS_AVAILABLE = True
+    except ImportError:
+        ANALYTICS_AVAILABLE = False
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -125,7 +162,10 @@ with st.sidebar:
     st.success("Public Framework: Available")
     st.success("Input Layer: Available")
     st.success("Unified Data Layer: Available")
-    st.warning("Advanced Analytics: Under Development")
+    if ANALYTICS_AVAILABLE:
+        st.success("Advanced Analytics (18–22): Connected")
+    else:
+        st.warning("Advanced Analytics: Under Development")
     st.warning("NASA Integration: Under Development")
     st.warning("Live Mode: Under Development")
     st.divider()
@@ -144,6 +184,8 @@ if "uploaded_hash" not in st.session_state:
     st.session_state.uploaded_hash = None
 if "uploaded_size" not in st.session_state:
     st.session_state.uploaded_size = None
+if "analytics_results" not in st.session_state:
+    st.session_state.analytics_results = None
 
 # ============================================================
 # HOME
@@ -168,7 +210,7 @@ if page == "🏠 Home":
         "Data Validation",
         "Quality Control",
         "Feature Engine Interface",
-        "Analytics",
+        "Analytics (Modules 18–22 Integrated)",
         "Visualization",
         "Dashboard",
     ]
@@ -263,7 +305,7 @@ elif page == "📥 Data Upload":
         st.json(metadata)
 
         # ----------------------------------------------------
-        # CSV PREVIEW
+        # CSV PREVIEW & MODULES 18-22 EXECUTION
         # ----------------------------------------------------
         if input_type == "CSV":
             try:
@@ -278,13 +320,32 @@ elif page == "📥 Data Upload":
                     f"Rows: {len(dataframe):,} | "
                     f"Columns: {len(dataframe.columns):,}"
                 )
+
+                # Execute Modules 18-22 for numeric signals
+                numeric_cols = dataframe.select_dtypes(include=np.number).columns
+                if len(numeric_cols) > 0 and ANALYTICS_AVAILABLE:
+                    signal_data = dataframe[numeric_cols[0]].dropna().values.astype(np.float64)
+                    anomaly_res = calculate_anomaly_score_1d(signal_data)
+                    transition_res = analyze_transition_1d(signal_data)
+                    uncertainty_res = evaluate_uncertainty_bounds(anomaly_res.get("anomaly_score", 0.0), sample_size=len(signal_data))
+                    explain_res = generate_explainability_report(
+                        dataset_id=filename,
+                        metric_values={"anomaly_score": anomaly_res.get("anomaly_score", 0.0)},
+                        confidence=uncertainty_res.get("confidence", 0.85)
+                    )
+                    st.session_state.analytics_results = {
+                        "anomaly": anomaly_res,
+                        "transition": transition_res,
+                        "uncertainty": uncertainty_res,
+                        "explainability": explain_res
+                    }
             except Exception as exc:
                 st.error(
                     f"CSV preview could not be generated: {exc}"
                 )
 
         # ----------------------------------------------------
-        # IMAGE PREVIEW
+        # IMAGE PREVIEW & MODULES 18-22 EXECUTION
         # ----------------------------------------------------
         elif input_type == "IMAGE":
             try:
@@ -304,13 +365,31 @@ elif page == "📥 Data Upload":
                         "height": image.height,
                     }
                 )
+
+                # Execute Modules 18-22 for 2D image matrix
+                if ANALYTICS_AVAILABLE:
+                    gray_img = np.array(image.convert("L"), dtype=np.float64)
+                    anomaly_res = calculate_anomaly_score_2d(gray_img)
+                    transition_res = analyze_transition_2d(gray_img)
+                    uncertainty_res = evaluate_uncertainty_bounds(anomaly_res.get("anomaly_score", 0.0), sample_size=gray_img.size)
+                    explain_res = generate_explainability_report(
+                        dataset_id=filename,
+                        metric_values={"anomaly_score": anomaly_res.get("anomaly_score", 0.0)},
+                        confidence=uncertainty_res.get("confidence", 0.85)
+                    )
+                    st.session_state.analytics_results = {
+                        "anomaly": anomaly_res,
+                        "transition": transition_res,
+                        "uncertainty": uncertainty_res,
+                        "explainability": explain_res
+                    }
             except Exception as exc:
                 st.error(
                     f"Image preview could not be generated: {exc}"
                 )
 
         # ----------------------------------------------------
-        # TIME-SERIES PREVIEW
+        # TIME-SERIES PREVIEW & MODULES 18-22 EXECUTION
         # ----------------------------------------------------
         elif input_type == "TIME-SERIES":
             st.subheader("Time-Series Input")
@@ -322,10 +401,60 @@ elif page == "📥 Data Upload":
                     text_preview[:5000],
                     language="text",
                 )
+
+                # Execute Modules 18-22 for Time-Series
+                signal_vals = []
+                for line in text_preview.splitlines():
+                    try:
+                        signal_vals.append(float(line.strip()))
+                    except ValueError:
+                        continue
+
+                if len(signal_vals) > 0 and ANALYTICS_AVAILABLE:
+                    signal_arr = np.array(signal_vals, dtype=np.float64)
+                    anomaly_res = calculate_anomaly_score_1d(signal_arr)
+                    transition_res = analyze_transition_1d(signal_arr)
+                    uncertainty_res = evaluate_uncertainty_bounds(anomaly_res.get("anomaly_score", 0.0), sample_size=len(signal_arr))
+                    explain_res = generate_explainability_report(
+                        dataset_id=filename,
+                        metric_values={"anomaly_score": anomaly_res.get("anomaly_score", 0.0)},
+                        confidence=uncertainty_res.get("confidence", 0.85)
+                    )
+                    st.session_state.analytics_results = {
+                        "anomaly": anomaly_res,
+                        "transition": transition_res,
+                        "uncertainty": uncertainty_res,
+                        "explainability": explain_res
+                    }
             except Exception as exc:
                 st.error(
                     f"Time-series preview failed: {exc}"
                 )
+
+        # ----------------------------------------------------
+        # MODULES 18-22 ANALYTICS DASHBOARD CARD
+        # ----------------------------------------------------
+        if st.session_state.analytics_results is not None:
+            st.divider()
+            st.subheader("🔬 Modules 18–22 Connected Analytics Output")
+            res = st.session_state.analytics_results
+            
+            a_score = res["anomaly"].get("anomaly_score", 0.0)
+            a_rank = res["anomaly"].get("anomaly_rank", "LOW")
+            t_score = res["transition"].get("transition_score", 0.0)
+            conf = res["uncertainty"].get("confidence", 0.85)
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Anomaly Score (M20)", f"{a_score:.4f}", f"Rank: {a_rank}")
+            with c2:
+                st.metric("Transition Score (M19)", f"{t_score:.4f}")
+            with c3:
+                st.metric("Uncertainty Confidence (M21)", f"{conf*100:.1f}%")
+
+            with st.expander("📊 Explainability Report (M22)", expanded=False):
+                st.json(res["explainability"])
+
     else:
         st.info(
             "Upload a CSV, image, or supported time-series file "
@@ -353,6 +482,7 @@ elif page == "🔬 Data Quality":
             "Input type detected": (
                 st.session_state.uploaded_type != "UNKNOWN"
             ),
+            "Analytics Core (18-22) Connected": ANALYTICS_AVAILABLE,
             "Human review available": True,
         }
 
@@ -370,6 +500,7 @@ elif page == "🔬 Data Quality":
                 "input_type": st.session_state.uploaded_type,
                 "size_bytes": st.session_state.uploaded_size,
                 "sha256": st.session_state.uploaded_hash,
+                "analytics_active": ANALYTICS_AVAILABLE,
                 "received_at_utc": utc_timestamp(),
                 "raw_data_immutable": True,
             }
@@ -438,6 +569,11 @@ elif page == "📊 Visualization":
             st.info(
                 "Advanced time-series visualization is under development."
             )
+
+        if st.session_state.analytics_results is not None:
+            st.divider()
+            st.subheader("📊 Analytics Summary Matrix (Modules 18-22)")
+            st.json(st.session_state.analytics_results["explainability"])
 
         st.divider()
         st.warning(
