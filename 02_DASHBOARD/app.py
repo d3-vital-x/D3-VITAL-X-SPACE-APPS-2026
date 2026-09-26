@@ -1,4 +1,3 @@
-%%writefile app.py
 # ============================================================
 # D³ VITAL-X SPACE INTELLIGENCE PLATFORM
 # Module 57 — app.py
